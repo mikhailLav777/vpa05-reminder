@@ -1,0 +1,11 @@
+# Окружение Python
+venv/
+.venv/
+
+# Служебные файлы Python
+__pycache__/
+*.py[cod]
+
+# Личные напоминания и служебные файлы базы
+reminders.db
+reminders.db-*
