@@ -80,6 +80,17 @@ class ReminderDatabase:
         )
         return cursor.fetchall()
 
+    def get_reminder_by_id(self, reminder_id):
+        """Найти напоминание по номеру или вернуть None."""
+        if type(reminder_id) is not int or reminder_id <= 0:
+            raise ValueError("Номер напоминания должен быть целым числом больше нуля.")
+
+        cursor = self.connection.execute(
+            "SELECT * FROM reminders WHERE id = ?",
+            (reminder_id,),
+        )
+        return cursor.fetchone()
+
     def close(self):
         """Закрыть соединение с базой."""
         self.connection.close()
