@@ -91,6 +91,23 @@ class ReminderDatabase:
         )
         return cursor.fetchone()
 
+    def update_status(self, reminder_id, status):
+        """Изменить статус. Вернуть False, если запись не найдена."""
+        if type(reminder_id) is not int or reminder_id <= 0:
+            raise ValueError("Номер напоминания должен быть целым числом больше нуля.")
+
+        allowed_statuses = ("Ожидает", "Готово", "Просрочено", "Отменено")
+        if status not in allowed_statuses:
+            raise ValueError("Неизвестный статус напоминания.")
+
+        with self.connection:
+            cursor = self.connection.execute(
+                "UPDATE reminders SET status = ? WHERE id = ?",
+                (status, reminder_id),
+            )
+
+        return cursor.rowcount == 1
+
     def close(self):
         """Закрыть соединение с базой."""
         self.connection.close()
