@@ -73,6 +73,13 @@ class ReminderDatabase:
 
         return cursor.lastrowid
 
+    def get_all_reminders(self):
+        """Получить все напоминания: ближайшие по времени первыми."""
+        cursor = self.connection.execute(
+            "SELECT * FROM reminders ORDER BY due_time, id"
+        )
+        return cursor.fetchall()
+
     def close(self):
         """Закрыть соединение с базой."""
         self.connection.close()
