@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+from datetime import datetime
 
 
 class ReminderDatabase:
@@ -36,6 +37,41 @@ class ReminderDatabase:
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+    def add_reminder(self, title, due_time, description="", important=False):
+        """Добавить напоминание и вернуть его номер."""
+        if not isinstance(title, str) or not title.strip():
+            raise ValueError("Укажи заголовок напоминания.")
+
+        if not isinstance(description, str):
+            raise ValueError("Описание должно быть текстом.")
+
+        if not isinstance(important, bool):
+            raise ValueError("Важность должна быть True или False.")
+
+        try:
+            parsed_time = datetime.strptime(due_time, "%Y-%m-%dT%H:%M:%S")
+        except (ValueError, TypeError):
+            raise ValueError(
+                "Укажи дату и время в формате 2026-11-16T10:00:00."
+            ) from None
+
+        with self.connection:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO reminders
+                    (title, description, due_time, important)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    title.strip(),
+                    description.strip(),
+                    parsed_time.isoformat(timespec="seconds"),
+                    int(important),
+                ),
+            )
+
+        return cursor.lastrowid
 
     def close(self):
         """Закрыть соединение с базой."""
