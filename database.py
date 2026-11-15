@@ -1,6 +1,6 @@
 import sqlite3
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 class ReminderDatabase:
@@ -139,6 +139,18 @@ class ReminderDatabase:
             ("Ожидает", current_time),
         )
         return cursor.fetchall()
+    def mark_overdue(self):
+        """Пометить ожидающие задачи, просроченные более чем на минуту."""
+        cutoff = (datetime.now() - timedelta(minutes=1)).isoformat(
+            timespec="seconds"
+        )
+        with self.connection:
+            cursor = self.connection.execute(
+                "UPDATE reminders SET status = ? "
+                "WHERE status = ? AND due_time < ?",
+                ("Просрочено", "Ожидает", cutoff),
+            )
+        return cursor.rowcount
 
     def close(self):
             """Закрыть соединение с базой."""
