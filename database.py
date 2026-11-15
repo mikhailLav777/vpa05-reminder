@@ -166,6 +166,9 @@ class ReminderDatabase:
                 ("Просрочено", "Ожидает", cutoff),
             )
         return cursor.rowcount
+    def sort_by_due_time(self):
+        """Получить все напоминания от раннего времени к позднему."""
+        return self.get_all_reminders()
 
     def close(self):
             """Закрыть соединение с базой."""
