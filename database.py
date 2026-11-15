@@ -170,9 +170,46 @@ class ReminderDatabase:
         """Получить все напоминания от раннего времени к позднему."""
         return self.get_all_reminders()
 
+    def reschedule_reminder(self, reminder_id, new_due_time):
+        """Назначить новое будущее время активному напоминанию."""
+        if type(reminder_id) is not int or reminder_id <= 0:
+            raise ValueError(
+                "Номер напоминания должен быть целым числом больше нуля."
+            )
+
+        try:
+            parsed_time = datetime.strptime(
+                new_due_time, "%Y-%m-%dT%H:%M:%S"
+            )
+        except (ValueError, TypeError):
+            raise ValueError(
+                "Укажи дату и время в формате 2026-11-16T10:00:00."
+            ) from None
+
+        if parsed_time <= datetime.now():
+            raise ValueError(
+                "Новое время напоминания должно быть в будущем."
+            )
+
+        with self.connection:
+            cursor = self.connection.execute(
+                "UPDATE reminders SET due_time = ?, status = ? "
+                "WHERE id = ? AND status IN (?, ?)",
+                (
+                    parsed_time.isoformat(timespec="seconds"),
+                    "Ожидает",
+                    reminder_id,
+                    "Ожидает",
+                    "Просрочено",
+                ),
+            )
+
+        return cursor.rowcount == 1
+
     def close(self):
-            """Закрыть соединение с базой."""
-            self.connection.close()
+        """Закрыть соединение с базой."""
+        self.connection.close()
+
 
 
 if __name__ == "__main__":
