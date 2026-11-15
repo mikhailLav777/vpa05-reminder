@@ -122,6 +122,13 @@ class ReminderDatabase:
             )
 
         return cursor.rowcount == 1
+    def get_reminders_count(self):
+        """Получить общее количество напоминаний."""
+        cursor = self.connection.execute(
+            "SELECT COUNT(*) FROM reminders"
+        )
+        return cursor.fetchone()[0]
+
     def close(self):
             """Закрыть соединение с базой."""
             self.connection.close()
