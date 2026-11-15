@@ -129,6 +129,17 @@ class ReminderDatabase:
         )
         return cursor.fetchone()[0]
 
+    def get_due_reminders(self):
+        """Получить ожидающие напоминания, время которых наступило."""
+        current_time = datetime.now().isoformat(timespec="seconds")
+        cursor = self.connection.execute(
+            "SELECT * FROM reminders "
+            "WHERE status = ? AND due_time <= ? "
+            "ORDER BY due_time, id",
+            ("Ожидает", current_time),
+        )
+        return cursor.fetchall()
+
     def close(self):
             """Закрыть соединение с базой."""
             self.connection.close()
