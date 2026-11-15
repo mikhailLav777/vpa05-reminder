@@ -73,12 +73,27 @@ class ReminderDatabase:
 
         return cursor.lastrowid
 
-    def get_all_reminders(self):
-        """Получить все напоминания: ближайшие по времени первыми."""
-        cursor = self.connection.execute(
-            "SELECT * FROM reminders ORDER BY due_time, id"
-        )
+    def get_all_reminders(self, status=None):
+        """Получить все напоминания или записи с выбранным статусом."""
+        if status is None:
+            cursor = self.connection.execute(
+                "SELECT * FROM reminders ORDER BY due_time, id"
+            )
+        else:
+            allowed_statuses = (
+                "Ожидает", "Готово", "Просрочено", "Отменено"
+            )
+            if status not in allowed_statuses:
+                raise ValueError("Неизвестный статус напоминания.")
+
+            cursor = self.connection.execute(
+                "SELECT * FROM reminders WHERE status = ? "
+                "ORDER BY due_time, id",
+                (status,),
+            )
+
         return cursor.fetchall()
+
 
     def get_reminder_by_id(self, reminder_id):
         """Найти напоминание по номеру или вернуть None."""
