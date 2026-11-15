@@ -108,9 +108,23 @@ class ReminderDatabase:
 
         return cursor.rowcount == 1
 
+    def delete_reminder(self, reminder_id):
+        """Удалить напоминание по номеру."""
+        if type(reminder_id) is not int or reminder_id <= 0:
+            raise ValueError(
+                "Номер напоминания должен быть целым числом больше нуля."
+            )
+
+        with self.connection:
+            cursor = self.connection.execute(
+                "DELETE FROM reminders WHERE id = ?",
+                (reminder_id,),
+            )
+
+        return cursor.rowcount == 1
     def close(self):
-        """Закрыть соединение с базой."""
-        self.connection.close()
+            """Закрыть соединение с базой."""
+            self.connection.close()
 
 
 if __name__ == "__main__":
