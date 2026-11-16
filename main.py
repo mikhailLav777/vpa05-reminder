@@ -1,8 +1,10 @@
-from mockup_navigation import NavigationApp
+"""Запуск главного окна с постоянным хранением задач."""
+
+from live_app import LiveApp
 
 
 def main():
-    app = NavigationApp()
+    app = LiveApp()
     app.mainloop()
 
 
