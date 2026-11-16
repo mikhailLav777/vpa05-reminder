@@ -1,4 +1,4 @@
-"""Главный экран учебного прототипа со сглаженными элементами."""
+"""Учебный прототип: оформление, фильтры, поиск и подсветка ввода."""
 
 import math
 import tkinter as tk
@@ -7,7 +7,7 @@ from functools import lru_cache
 from tkinter import font as tkfont
 from tkinter import messagebox
 
-from PIL import Image, ImageDraw, ImageFilter, ImageTk
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageTk
 
 
 BG = "#280A46"
@@ -46,14 +46,12 @@ def blend(first, second, amount):
 
 
 def _place_image(canvas, image, x, y, tag):
-    """Сохранить ссылки на изображения, используемые Tkinter."""
     references = getattr(canvas, "_smooth_images", {})
     canvas._smooth_images = {
         item: picture
         for item, picture in references.items()
         if canvas.type(item)
     }
-
     picture = ImageTk.PhotoImage(image, master=canvas)
     item = canvas.create_image(
         x, y, image=picture, anchor="nw", tags=tag,
@@ -69,7 +67,6 @@ def _surface(width, height, radius, style, border_color, border_width):
         (width + padding * 2) * scale,
         (height + padding * 2) * scale,
     )
-
     result = Image.new("RGBA", size, (0, 0, 0, 0))
     box = (
         padding * scale,
@@ -83,7 +80,6 @@ def _surface(width, height, radius, style, border_color, border_width):
 
     if style is not None:
         top, bottom, edge = STYLES[style]
-
         mask = Image.new("L", size, 0)
         ImageDraw.Draw(mask).rounded_rectangle(
             box, radius=radius, fill=255,
@@ -110,7 +106,6 @@ def _surface(width, height, radius, style, border_color, border_width):
                 ),
             )
             color = blend(top, bottom, min(1, fraction * 1.55))
-
             if style != "input":
                 if fraction < 0.17:
                     color = blend(
@@ -120,7 +115,6 @@ def _surface(width, height, radius, style, border_color, border_width):
                     color = blend(
                         color, edge, (fraction - 0.84) * 1.1,
                     )
-
             draw.line((0, y, size[0], y), fill=color)
 
         gradient.putalpha(mask)
@@ -133,7 +127,6 @@ def _surface(width, height, radius, style, border_color, border_width):
         outline=border_color,
         width=max(1, round(border_width * scale)),
     )
-
     return result.resize(
         (width + padding * 2, height + padding * 2),
         Image.Resampling.LANCZOS,
@@ -143,10 +136,8 @@ def _surface(width, height, radius, style, border_color, border_width):
 def rounded_outline(canvas, box, radius, color, width=1, tag="art"):
     x1, y1, x2, y2 = box
     w, h = round(x2 - x1) + 1, round(y2 - y1) + 1
-
     if w < 4 or h < 4:
         return
-
     image = _surface(w, h, radius, None, color, width)
     _place_image(canvas, image, x1 - 5, y1 - 5, tag)
 
@@ -154,10 +145,8 @@ def rounded_outline(canvas, box, radius, color, width=1, tag="art"):
 def glass(canvas, box, style="purple", radius=12, tag="art"):
     x1, y1, x2, y2 = box
     w, h = round(x2 - x1) + 1, round(y2 - y1) + 1
-
     if w < 4 or h < 4:
         return
-
     image = _surface(
         w, h, radius, style, STYLES[style][2], 1.2,
     )
@@ -175,9 +164,7 @@ def _icon_image(kind, color, size):
     def line(points):
         draw.line(
             [(c + x * scale, c + y * scale) for x, y in points],
-            fill=color,
-            width=2 * scale,
-            joint="curve",
+            fill=color, width=2 * scale, joint="curve",
         )
 
     def box(coords):
@@ -186,8 +173,7 @@ def _icon_image(kind, color, size):
     if kind in ("clock", "cancel", "check"):
         draw.ellipse(
             (c - r, c - r, c + r, c + r),
-            outline=color,
-            width=2 * scale,
+            outline=color, width=2 * scale,
         )
         if kind == "clock":
             line([(0, -size / 2 + 4), (0, 0), (5, 2)])
@@ -202,9 +188,7 @@ def _icon_image(kind, color, size):
     elif kind == "calendar":
         draw.rounded_rectangle(
             (c - r, c - r + 3 * scale, c + r, c + r),
-            radius=2 * scale,
-            outline=color,
-            width=2 * scale,
+            radius=2 * scale, outline=color, width=2 * scale,
         )
         line([
             (-size / 2, -size / 2 + 8),
@@ -216,12 +200,11 @@ def _icon_image(kind, color, size):
     elif kind == "mic":
         draw.rounded_rectangle(
             box((-3, -size / 2, 3, 3)),
-            radius=3 * scale,
-            fill=color,
+            radius=3 * scale, fill=color,
         )
         draw.arc(
-            box((-7, -4, 7, 8)),
-            0, 180, fill=color, width=2 * scale,
+            box((-7, -4, 7, 8)), 0, 180,
+            fill=color, width=2 * scale,
         )
         line([(0, 7), (0, 11)])
         line([(-5, 11), (5, 11)])
@@ -229,8 +212,7 @@ def _icon_image(kind, color, size):
     elif kind == "search":
         draw.ellipse(
             box((-size / 2, -size / 2, 4, 4)),
-            outline=color,
-            width=2 * scale,
+            outline=color, width=2 * scale,
         )
         line([(3, 3), (size / 2, size / 2)])
 
@@ -266,12 +248,10 @@ def _icon_image(kind, color, size):
 
 
 def icon(canvas, kind, x, y, color=WHITE, size=18, tag="art"):
-    smooth_icons = (
+    if kind in (
         "clock", "cancel", "calendar", "mic", "search",
         "check", "warning", "star", "arrow",
-    )
-
-    if kind in smooth_icons:
+    ):
         image = _icon_image(kind, color, size)
         _place_image(
             canvas, image,
@@ -281,17 +261,12 @@ def icon(canvas, kind, x, y, color=WHITE, size=18, tag="art"):
         )
     else:
         symbols = {
-            "gear": "⚙",
-            "phone": "☎",
-            "box": "◇",
-            "bell": "♧",
+            "gear": "⚙", "phone": "☎",
+            "box": "◇", "bell": "♧",
         }
         canvas.create_text(
-            x, y,
-            text=symbols.get(kind, ""),
-            fill=color,
-            font=("Segoe UI Symbol", -size - 4),
-            tags=tag,
+            x, y, text=symbols.get(kind, ""), fill=color,
+            font=("Segoe UI Symbol", -size - 4), tags=tag,
         )
 
 
@@ -305,12 +280,9 @@ class NeonButton(tk.Canvas):
         super().__init__(
             parent,
             bg=parent.cget("bg"),
-            height=height,
-            width=width,
-            highlightthickness=0,
-            bd=0,
-            cursor="hand2",
-            takefocus=1,
+            height=height, width=width,
+            highlightthickness=0, bd=0,
+            cursor="hand2", takefocus=1,
         )
         self.text, self.command, self.style = text, command, style
         self.icon_name = icon_name
@@ -345,7 +317,6 @@ class NeonButton(tk.Canvas):
     def _release(self, event):
         was_pressed = self.pressed
         self._state(pressed=False)
-
         if (
             was_pressed
             and 0 <= event.x <= self.winfo_width()
@@ -356,13 +327,16 @@ class NeonButton(tk.Canvas):
     def _draw(self, event=None):
         self.delete("art")
         w, h = self.winfo_width(), self.winfo_height()
-
         if w < 12 or h < 12:
             return
 
         glass(self, (4, 4, w - 5, h - 5), self.style, 11)
 
-        if self.hover or self.focus_get() == self:
+        if (
+            self.hover
+            or self.focus_get() == self
+            or getattr(self, "selected", False)
+        ):
             rounded_outline(
                 self, (4, 4, w - 5, h - 5), 11, WHITE, 1.4,
             )
@@ -386,106 +360,195 @@ class NeonButton(tk.Canvas):
 
         self.create_text(
             left + extra, h / 2 + shift,
-            text=self.text,
-            anchor="w",
-            fill=color,
-            font=self.font,
-            tags="art",
+            text=self.text, anchor="w",
+            fill=color, font=self.font, tags="art",
         )
+
+
+@lru_cache(maxsize=12)
+def _input_mask(width, height):
+    mask = Image.new("L", (width * 4, height * 4), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (6 * 4, 6 * 4, (width - 7) * 4, (height - 7) * 4),
+        radius=8 * 4, fill=255,
+    )
+    return mask.resize(
+        (width, height), Image.Resampling.LANCZOS,
+    )
+
+
+def _beam_image(width, height, position):
+    image = Image.new(
+        "RGBA", (width, height), (37, 245, 237, 0),
+    )
+    alpha = Image.new("L", image.size, 0)
+    draw = ImageDraw.Draw(alpha)
+    band = max(30, width // 7)
+
+    for x in range(
+        max(0, int(position - band)),
+        min(width, int(position + band) + 1),
+    ):
+        strength = max(0, 1 - abs(x - position) / band)
+        draw.line(
+            (x, 0, x, height),
+            fill=round(60 * strength * strength),
+        )
+
+    image.putalpha(
+        ImageChops.multiply(alpha, _input_mask(width, height))
+    )
+    return image
 
 
 class RoundedEntry(tk.Canvas):
-    """Однотонное поле ввода со сглаженной рамкой."""
+    """Поле ввода с необязательным вертикальным переливом."""
 
-    def __init__(self, parent, variable, placeholder, icon_name=None):
+    def __init__(
+        self, parent, variable, placeholder,
+        icon_name=None, animate=False,
+    ):
         super().__init__(
             parent,
             bg=parent.cget("bg"),
-            height=42,
-            width=100,
-            highlightthickness=0,
-            bd=0,
+            height=42, width=100,
+            highlightthickness=0, bd=0, takefocus=1,
         )
+        self.variable = variable
+        self.placeholder = placeholder
         self.icon_name = icon_name
+        self.animate = animate
+        self.animation_allowed = animate
+        self.focused = False
+        self.phase = 0
+        self.timer = None
 
         self.entry = tk.Entry(
             self,
             textvariable=variable,
-            bg="#311344",
-            fg=WHITE,
+            bg="#311344", fg=WHITE,
             insertbackground=CYAN,
-            relief="flat",
-            bd=0,
+            relief="flat", bd=0,
             font=("Segoe UI", -18),
         )
-        self.placeholder = tk.Label(
-            self,
-            text=placeholder,
-            bg="#311344",
-            fg=MUTED,
-            font=("Segoe UI", -17),
-            anchor="w",
-        )
-        self.placeholder.bind(
-            "<Button-1>",
-            lambda event: self.entry.focus_set(),
-        )
-
-        x = 42 if icon_name else 16
         self.entry_id = self.create_window(
-            x, 21, anchor="w", window=self.entry,
-        )
-        self.placeholder_id = self.create_window(
-            x, 21, anchor="w", window=self.placeholder,
+            16, 21, anchor="w", window=self.entry,
         )
 
-        def toggle_placeholder(*args):
-            visible = (
-                not variable.get()
-                and self.focus_get() != self.entry
-            )
-            self.itemconfigure(
-                self.placeholder_id,
-                state="normal" if visible else "hidden",
-            )
-
-        variable.trace_add("write", toggle_placeholder)
-        self.entry.bind("<FocusIn>", toggle_placeholder)
-        self.entry.bind("<FocusOut>", toggle_placeholder)
+        self.entry.bind("<FocusIn>", self._focus_in)
+        self.entry.bind("<FocusOut>", self._focus_out)
+        self.bind("<Button-1>", lambda event: self.activate())
+        self.bind("<FocusIn>", lambda event: self.activate())
         self.bind("<Configure>", self._draw)
+        self.bind("<Destroy>", self._destroy)
+        self.bind("<Map>", lambda event: self._schedule())
+        self.bind("<Unmap>", lambda event: self._schedule())
+        variable.trace_add("write", self._changed)
+
+    def activate(self):
+        self.itemconfigure(self.entry_id, state="normal")
+        self.entry.focus_set()
+
+    def _focus_in(self, event):
+        self.focused = True
+        self._draw()
+
+    def _focus_out(self, event):
+        self.focused = False
+        self._draw()
+
+    def _changed(self, *args):
+        self._draw()
+
+    def set_shimmer(self, enabled):
+        self.animation_allowed = bool(enabled)
+        self._schedule()
+
+    def _destroy(self, event):
+        if event.widget == self and self.timer is not None:
+            self.after_cancel(self.timer)
+            self.timer = None
+
+    def _schedule(self):
+        running = (
+            self.animate
+            and self.animation_allowed
+            and not self.focused
+            and not self.variable.get()
+            and self.winfo_viewable()
+        )
+
+        if not running:
+            if self.timer is not None:
+                self.after_cancel(self.timer)
+                self.timer = None
+            self.delete("shimmer")
+        elif self.timer is None:
+            self.timer = self.after(50, self._tick)
+
+    def _tick(self):
+        self.timer = None
+        self.delete("shimmer")
+
+        if (
+            self.animate
+            and self.animation_allowed
+            and not self.focused
+            and not self.variable.get()
+            and self.winfo_viewable()
+        ):
+            w, h = self.winfo_width(), self.winfo_height()
+            if w > 24 and h > 20:
+                self.phase = (self.phase + 0.012) % 1
+                position = (self.phase * 1.4 - 0.2) * w
+                _place_image(
+                    self,
+                    _beam_image(w, h, position),
+                    0, 0, "shimmer",
+                )
+                self.tag_raise("placeholder")
+            self._schedule()
 
     def _draw(self, event=None):
         self.delete("art")
         w, h = self.winfo_width(), self.winfo_height()
-        glass(self, (4, 4, w - 5, h - 5), "input", 10)
+        if w < 24 or h < 20:
+            return
 
+        glass(self, (4, 4, w - 5, h - 5), "input", 10)
         if self.icon_name:
             icon(self, self.icon_name, 24, h / 2, CYAN)
 
         x = 42 if self.icon_name else 16
         self.coords(self.entry_id, x, h / 2)
-        self.coords(self.placeholder_id, x, h / 2)
         self.itemconfigure(
             self.entry_id, width=max(10, w - x - 15),
         )
+        show_entry = self.focused or bool(self.variable.get())
         self.itemconfigure(
-            self.placeholder_id, width=max(10, w - x - 15),
+            self.entry_id,
+            state="normal" if show_entry else "hidden",
         )
+
+        if not show_entry:
+            self.create_text(
+                x, h / 2,
+                text=self.placeholder,
+                fill=MUTED, anchor="w",
+                font=("Segoe UI", -17),
+                tags=("art", "placeholder"),
+            )
+
         self.tag_raise(self.entry_id)
-        self.tag_raise(self.placeholder_id)
+        self._schedule()
 
 
 class NeonScrollbar(tk.Canvas):
-    """Бирюзовый бегунок прокрутки."""
-
     def __init__(self, parent, target):
         super().__init__(
-            parent,
-            width=23,
+            parent, width=23,
             bg=parent.cget("bg"),
-            highlightthickness=0,
-            bd=0,
-            takefocus=1,
+            highlightthickness=0, bd=0, takefocus=1,
         )
         self.target = target
         self.first, self.last, self.drag_offset = 0, 1, 0
@@ -520,7 +583,6 @@ class NeonScrollbar(tk.Canvas):
     def _draw(self, event=None):
         self.delete("art")
         h = self.winfo_height()
-
         if h < 48:
             return
 
@@ -535,13 +597,11 @@ class NeonScrollbar(tk.Canvas):
             7, h - 13, 12, h - 8, 17, h - 13,
             fill=WHITE, width=2, tags="art",
         )
-
         top, length, _ = self._geometry()
         glass(self, (6, top, 17, top + length), "cyan", 5)
 
     def _press(self, event):
         self.focus_set()
-
         if event.y < 21:
             self.target.yview_scroll(-1, "units")
         elif event.y > self.winfo_height() - 21:
@@ -570,8 +630,6 @@ class NeonScrollbar(tk.Canvas):
 
 
 class TaskCard(tk.Canvas):
-    """Демонстрационная карточка задачи."""
-
     def __init__(
         self, parent, app, title, when, status,
         priority, style, priority_style,
@@ -579,10 +637,8 @@ class TaskCard(tk.Canvas):
         super().__init__(
             parent,
             bg=parent.cget("bg"),
-            height=112,
-            width=300,
-            bd=0,
-            highlightthickness=0,
+            height=112, width=300,
+            bd=0, highlightthickness=0,
         )
         self.app, self.title, self.when = app, title, when
         self.status, self.priority = status, priority
@@ -593,10 +649,8 @@ class TaskCard(tk.Canvas):
             "Открыть подробности",
             lambda: app.stage_message(f"Подробности: {title}"),
             icon_name="arrow",
-            height=32,
-            width=250,
-            font_size=15,
-            bold=False,
+            height=32, width=250,
+            font_size=15, bold=False,
         )
         self.details_id = self.create_window(
             0, 0, window=self.details, anchor="nw",
@@ -606,18 +660,15 @@ class TaskCard(tk.Canvas):
     def _draw(self, event=None):
         self.delete("art")
         w = self.winfo_width()
-
         if w < 50:
             return
 
         glass(self, (4, 4, w - 6, 105), self.style, 12)
         glass(
-            self,
-            (18, 36, 43, 61),
+            self, (18, 36, 43, 61),
             "green" if self.status == "Готово" else "purple",
             5,
         )
-
         if self.status == "Готово":
             self.create_line(
                 23, 48, 28, 53, 38, 42,
@@ -638,7 +689,6 @@ class TaskCard(tk.Canvas):
 
         while text and title_font.measure(text) > available:
             text = text[:-1]
-
         if text != self.title:
             text = text[:-1] + "…"
 
@@ -669,7 +719,6 @@ class TaskCard(tk.Canvas):
             "Просрочено": "warning",
             "Отменено": "cancel",
         }.get(self.status, "clock")
-
         icon(self, status_icon, w - 149, 25, size=15)
         self.create_text(
             w - 132, 25, text=self.status,
@@ -702,8 +751,61 @@ class TaskCard(tk.Canvas):
         self.tag_raise(self.details_id)
 
 
+DEMO_TASKS = (
+    (
+        (
+            "Проверить остатки", "16 ноября, 10:00", "Ожидает",
+            "☆ Важная, не срочная", "blue", "gold",
+        ),
+        "Сверить остатки товаров и подготовить список для заказа.",
+    ),
+    (
+        (
+            "Связаться с поставщиком", "16 ноября, 11:00", "Ожидает",
+            "◷ Неважная, но срочная", "purple", "blue",
+        ),
+        "Уточнить у поставщика наличие товара и время поставки.",
+    ),
+    (
+        (
+            "Сверить накладные", "16 ноября, 09:00", "Готово",
+            "— Неважная и не срочная", "green", "gray",
+        ),
+        "Сверить суммы и сохранить результаты проверки.",
+    ),
+    (
+        (
+            "Подтвердить встречу", "16 ноября, 08:00", "Просрочено",
+            "★ ◷ Важная и срочная", "purple", "orange",
+        ),
+        "Позвонить участнику встречи и подтвердить время.",
+    ),
+    (
+        (
+            "Проверить старый заказ", "15 ноября, 15:00", "Отменено",
+            "— Неважная и не срочная", "violet", "gray",
+        ),
+        "Проверка отменённого заказа.",
+    ),
+)
+
+
+def filter_demo_tasks(tasks, status=None, query=""):
+    """Статус и поиск применяются одновременно."""
+    words = query.casefold().split()
+    return [
+        card
+        for card, description in tasks
+        if (status is None or card[2] == status)
+        and all(
+            word in (card[0] + " " + description).casefold()
+            for word in words
+        )
+    ]
+
+
 class ReminderApp(tk.Tk):
-    """Главное окно прототипа; действия подключаются отдельно."""
+    """Главное окно с демонстрационными фильтрами и поиском."""
 
     def __init__(self):
         super().__init__()
@@ -711,14 +813,25 @@ class ReminderApp(tk.Tk):
         self.geometry("1120x780")
         self.minsize(980, 700)
         self.configure(bg=BG)
-
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
+
+        self.active_status = None
+        self.filter_buttons = {}
+        self.search_text = tk.StringVar()
+        self.new_title = tk.StringVar()
+        self.voice_preview = False
 
         self._build_header()
         self._build_body()
         self._update_clock()
 
+        self.search_text.trace_add("write", self._search_changed)
+        self.bind(
+            "<FocusIn>",
+            lambda event: self.after_idle(self._sync_shimmer),
+            add="+",
+        )
         self.bind("<MouseWheel>", self._mouse_wheel)
         self.bind(
             "<Button-4>",
@@ -728,6 +841,8 @@ class ReminderApp(tk.Tk):
             "<Button-5>",
             lambda event: self._linux_wheel(event, 1),
         )
+        self.after_idle(self.refresh_tasks)
+        self.after_idle(self._sync_shimmer)
 
     def label(
         self, parent, text, size=18,
@@ -747,11 +862,12 @@ class ReminderApp(tk.Tk):
 
     def button(
         self, parent, text, style="teal",
-        icon_name=None, **kwargs,
+        icon_name=None, command=None, **kwargs,
     ):
         return NeonButton(
-            parent, text,
-            lambda: self.stage_message(text),
+            parent,
+            text,
+            command or (lambda: self.stage_message(text)),
             style, icon_name, **kwargs,
         )
 
@@ -769,7 +885,6 @@ class ReminderApp(tk.Tk):
         )
         bell.grid(row=0, column=0, padx=(0, 10))
         glass(bell, (4, 4, 34, 34), "green", 7)
-
         bell.create_polygon(
             13, 24, 15, 20, 15, 15, 17, 12, 22, 12,
             25, 16, 25, 20, 28, 24,
@@ -789,7 +904,6 @@ class ReminderApp(tk.Tk):
         )
         self.clock.grid(row=0, column=2, sticky="e")
         glass(self.clock, (4, 4, 395, 34), "purple", 10)
-
         self.clock_id = self.clock.create_text(
             200, 19, fill=WHITE,
             font=("Segoe UI", -17, "bold"),
@@ -824,8 +938,8 @@ class ReminderApp(tk.Tk):
 
         self.label(
             self,
-            "Учебный прототип · примеры задач · "
-            "действия пока демонстрационные",
+            "Учебный прототип · демонстрационные задачи · "
+            "база не подключена",
             12, color=MUTED,
         ).grid(
             row=2, column=0, sticky="w",
@@ -855,12 +969,17 @@ class ReminderApp(tk.Tk):
         )
 
         for row, (text, style, picture) in enumerate(sections, 1):
-            self.button(
-                sidebar, text, style, picture, font_size=19,
-            ).grid(
+            status = None if text == "Все задачи" else text
+            button = self.button(
+                sidebar, text, style, picture,
+                font_size=19,
+                command=lambda value=status: self.select_status(value),
+            )
+            button.grid(
                 row=row, column=0, sticky="ew",
                 padx=10, pady=3,
             )
+            self.filter_buttons[status] = button
 
         self.button(
             sidebar, "Настройки",
@@ -885,34 +1004,45 @@ class ReminderApp(tk.Tk):
         )
         toolbar.grid_columnconfigure(0, weight=1)
 
-        self.label(
+        self.section_heading = self.label(
             toolbar, "Все задачи", 28, True,
-        ).grid(row=0, column=0, sticky="w")
-
+        )
+        self.section_heading.grid(
+            row=0, column=0, sticky="w",
+        )
         self.button(
             toolbar, "Все даты",
             icon_name="calendar", height=36, width=160,
         ).grid(row=0, column=1)
 
-        self.search_text = tk.StringVar()
         search = tk.Frame(content, bg=BG)
         search.grid(
             row=1, column=0, sticky="ew", pady=(0, 6),
         )
         search.grid_columnconfigure(0, weight=1)
 
-        RoundedEntry(
+        self.search_entry = RoundedEntry(
             search, self.search_text,
             "Поиск по всем датам", "search",
-        ).grid(row=0, column=0, sticky="ew")
+        )
+        self.search_entry.grid(
+            row=0, column=0, sticky="ew",
+        )
+        self.search_entry.entry.bind(
+            "<Return>",
+            lambda event: self.refresh_tasks(),
+        )
 
         self.button(
-            search, "Найти", "cyan", height=42, width=150,
+            search, "Найти", "cyan",
+            height=42, width=150,
+            command=self.refresh_tasks,
         ).grid(row=0, column=1, padx=(8, 0))
 
         self.button(
             content, "План на неделю",
-            icon_name="calendar", height=44, font_size=21,
+            icon_name="calendar",
+            height=44, font_size=21,
         ).grid(
             row=2, column=0, sticky="ew", pady=(0, 6),
         )
@@ -921,20 +1051,23 @@ class ReminderApp(tk.Tk):
             content, "Новая задача", 22, True,
         ).grid(row=3, column=0, sticky="w")
 
-        self.new_title = tk.StringVar()
         new_row = tk.Frame(content, bg=BG)
         new_row.grid(
             row=4, column=0, sticky="ew", pady=(3, 4),
         )
         new_row.grid_columnconfigure(0, weight=1)
 
-        RoundedEntry(
-            new_row, self.new_title, "Что нужно сделать?",
-        ).grid(row=0, column=0, sticky="ew")
-
+        self.title_entry = RoundedEntry(
+            new_row, self.new_title,
+            "Что нужно сделать?", animate=True,
+        )
+        self.title_entry.grid(
+            row=0, column=0, sticky="ew",
+        )
         self.button(
             new_row, "Продиктовать",
             "cyan", "mic", width=200,
+            command=self.microphone_preview,
         ).grid(row=0, column=1, padx=(8, 0))
 
         self.button(
@@ -975,14 +1108,15 @@ class ReminderApp(tk.Tk):
         )
         footer.grid_columnconfigure(0, weight=1)
 
-        self.label(
-            footer, "Галочка — задача выполнена",
-            13, color=MUTED,
-        ).grid(row=0, column=0, sticky="w")
+        self.result_label = self.label(
+            footer, "", 13, color=MUTED,
+        )
+        self.result_label.grid(row=0, column=0, sticky="w")
 
         self.button(
             footer, "Пример уведомления", "purple",
-            height=32, width=210, font_size=14, bold=False,
+            height=32, width=210,
+            font_size=14, bold=False,
         ).grid(row=0, column=1)
 
     def _build_list(self, content):
@@ -993,17 +1127,13 @@ class ReminderApp(tk.Tk):
 
         self.tasks_canvas = tk.Canvas(
             self.list_frame,
-            bg=BG,
-            width=100,
-            height=200,
-            bd=0,
-            highlightthickness=0,
+            bg=BG, width=100, height=200,
+            bd=0, highlightthickness=0,
             yscrollincrement=24,
         )
         self.tasks_canvas.grid(
             row=0, column=0, sticky="nsew",
         )
-
         self.scrollbar = NeonScrollbar(
             self.list_frame, self.tasks_canvas,
         )
@@ -1014,56 +1144,102 @@ class ReminderApp(tk.Tk):
             yscrollcommand=self.scrollbar.set,
         )
 
-        cards = tk.Frame(self.tasks_canvas, bg=BG)
+        self.cards = tk.Frame(self.tasks_canvas, bg=BG)
         window = self.tasks_canvas.create_window(
-            (0, 0), window=cards, anchor="nw",
+            (0, 0), window=self.cards, anchor="nw",
         )
-
         self.tasks_canvas.bind(
             "<Configure>",
             lambda event: self.tasks_canvas.itemconfigure(
                 window, width=event.width,
             ),
         )
-        cards.bind(
+        self.cards.bind(
             "<Configure>",
             lambda event: self.tasks_canvas.configure(
                 scrollregion=self.tasks_canvas.bbox("all"),
             ),
         )
 
-        examples = (
-            (
-                "Проверить остатки", "16 ноября, 10:00",
-                "Ожидает", "☆ Важная, не срочная",
-                "blue", "gold",
-            ),
-            (
-                "Связаться с поставщиком", "16 ноября, 11:00",
-                "Ожидает", "◷ Неважная, но срочная",
-                "purple", "blue",
-            ),
-            (
-                "Сверить накладные", "16 ноября, 09:00",
-                "Готово", "— Неважная и не срочная",
-                "green", "gray",
-            ),
-            (
-                "Подтвердить встречу", "16 ноября, 08:00",
-                "Просрочено", "★ ◷ Важная и срочная",
-                "purple", "orange",
-            ),
-            (
-                "Проверить старый заказ", "15 ноября, 15:00",
-                "Отменено", "— Неважная и не срочная",
-                "violet", "gray",
-            ),
+    def select_status(self, status):
+        self.active_status = status
+        self.refresh_tasks()
+
+    def _search_changed(self, *args):
+        self.refresh_tasks()
+        self._sync_shimmer()
+
+    def refresh_tasks(self):
+        records = filter_demo_tasks(
+            DEMO_TASKS,
+            self.active_status,
+            self.search_text.get(),
         )
 
-        for example in examples:
+        for child in self.cards.winfo_children():
+            child.destroy()
+
+        for card in records:
             TaskCard(
-                cards, self, *example,
+                self.cards, self, *card,
             ).pack(fill="x", pady=(0, 3))
+
+        if not records:
+            self.label(
+                self.cards, "Задачи не найдены", 22, True,
+            ).pack(
+                anchor="w", padx=20, pady=(28, 6),
+            )
+            self.label(
+                self.cards,
+                "Измени запрос или выбери другой раздел.",
+                15, color=MUTED,
+            ).pack(
+                anchor="w", padx=20, pady=(0, 20),
+            )
+
+        self.section_heading.configure(
+            text=self.active_status or "Все задачи",
+        )
+        self.result_label.configure(
+            text=f"Показано: {len(records)} из {len(DEMO_TASKS)}",
+        )
+
+        for status, button in self.filter_buttons.items():
+            button.selected = status == self.active_status
+            button._draw()
+
+        self.cards.update_idletasks()
+        self.tasks_canvas.configure(
+            scrollregion=self.tasks_canvas.bbox("all"),
+        )
+        self.tasks_canvas.yview_moveto(0)
+
+    def _sync_shimmer(self):
+        if not self.winfo_exists():
+            return
+
+        focus = self.focus_get()
+        searching = (
+            bool(self.search_text.get().strip())
+            or focus in (
+                self.search_entry,
+                self.search_entry.entry,
+            )
+        )
+        self.title_entry.set_shimmer(
+            not searching and not self.voice_preview,
+        )
+
+    def microphone_preview(self):
+        self.voice_preview = True
+        self._sync_shimmer()
+        try:
+            self.stage_message("Диктовка пока не подключена")
+        finally:
+            self.voice_preview = False
+            self.title_entry.activate()
+            self._sync_shimmer()
 
     def _inside_list(self, widget):
         while widget is not None:
@@ -1091,12 +1267,10 @@ class ReminderApp(tk.Tk):
 
     def stage_message(self, action):
         messagebox.showinfo(
-            "Учебный прототип — оформление",
+            "Учебный прототип",
             f"{action}\n\n"
-            "Сейчас проверяем оформление главного экрана. "
-            "Действия с задачами и переходы подключим "
-            "следующим этапом.\n\n"
-            "Карточки содержат демонстрационные данные.",
+            "Эта возможность будет подключена следующим этапом.\n"
+            "Сейчас работают фильтры, поиск и подсветка пустого поля.",
             parent=self,
         )
 
