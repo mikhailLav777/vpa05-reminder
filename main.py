@@ -1,8 +1,8 @@
-from demo_completion import DemoApp
+from mockup_navigation import NavigationApp
 
 
 def main():
-    app = DemoApp()
+    app = NavigationApp()
     app.mainloop()
 
 

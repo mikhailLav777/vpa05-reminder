@@ -9,3 +9,5 @@ __pycache__/
 # Личные напоминания и служебные файлы базы
 reminders.db
 reminders.db-*
+# Скачанный архив макетов
+/assets.zip
