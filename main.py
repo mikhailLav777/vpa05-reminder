@@ -1,8 +1,8 @@
-from gui import ReminderApp
+from demo_completion import DemoApp
 
 
 def main():
-    app = ReminderApp()
+    app = DemoApp()
     app.mainloop()
 
 
