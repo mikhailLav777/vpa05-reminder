@@ -36,18 +36,33 @@ def field_layout(width, scrolling):
 
 
 def fast_surfaces(original):
-    """Растягивать прямую середину плашки, сохраняя её сглаженные углы."""
+    """Переиспользовать сглаженные края плашек при изменении окна."""
+    @lru_cache(maxsize=256)
+    def template(width, height, radius, style, border_color, border_width):
+        return original(width, height, radius, style, border_color, border_width)
+
     @lru_cache(maxsize=96)
     def surface(width, height, radius, style, border_color, border_width):
-        cap = math.ceil(min(radius, (height-1)/2, (width-1)/2)) + 12
+        if style is None and height > width:
+            # У одноцветной рамки нет направления градиента. Вертикальная
+            # полоса прокрутки может взять те же готовые скругления.
+            return surface(height, width, radius, style, border_color,
+                           border_width).transpose(Image.Transpose.TRANSPOSE)
+        # Исходник рисует в 4×. Соседние размеры с одинаковыми углами
+        # могут использовать одну заготовку даже при разном масштабе.
+        radius = round(max(1, min(radius, (height-1)/2, (width-1)/2))*4)/4
+        border_width = max(1, round(border_width*4))/4
+        cap = math.ceil(radius) + 12
         narrow = min(width, max(48, 2*cap-8))
-        image = original(narrow, height, radius, style, border_color, border_width)
+        image = template(narrow, height, radius, style, border_color, border_width)
         if width == narrow:
             return image
         result = Image.new("RGBA", (width+10, height+10))
         result.paste(image.crop((0, 0, cap, image.height)), (0, 0))
         middle = image.crop((cap, 0, image.width-cap, image.height))
-        result.paste(middle.resize((result.width-2*cap, image.height), Image.Resampling.LANCZOS), (cap, 0))
+        # У середины цвет меняется только сверху вниз. Копирование
+        # столбцов сохраняет градиент, углы берутся из заготовки.
+        result.paste(middle.resize((result.width-2*cap, image.height), Image.Resampling.NEAREST), (cap, 0))
         result.paste(image.crop((image.width-cap, 0, image.width, image.height)), (result.width-cap, 0))
         return result
     return surface
@@ -56,10 +71,17 @@ def fast_surfaces(original):
 def cached_draw(method):
     """Повторный вызов с тем же состоянием не создаёт те же изображения."""
     def wrapped(self, event=None):
+        manager = getattr(self._root(), "_ui_scale", None)
+        if manager is not None:
+            if getattr(event, "type", None) == tk.EventType.Configure:
+                manager.queue_draw(self)
+                return
+            if not manager.card_in_view(self):
+                return
         attrs = ("text", "style", "font", "hover", "pressed", "selected", "title",
                  "when", "status", "priority", "priority_style", "focused",
                  "voice_state", "placeholder", "icon_name", "first", "last", "_scroll_visible")
-        key = (_native_width(self), _native_height(self), factor(self), self.focus_get(),
+        key = (_native_width(self), _native_height(self), factor(self), self.focus_get() == self,
                *(getattr(self, name, None) for name in attrs))
         if hasattr(self, "entry") and isinstance(self.entry, tk.Text):
             key += (self.get(), self.entry.cget("font"))
@@ -156,6 +178,8 @@ def install_scaling():
     import input_widgets
     from demo_completion import CompletionCard
     _installed = True
+    # Разные плашки часто используют одни и те же оттенки градиента.
+    gui.blend = lru_cache(maxsize=8192)(gui.blend)
     gui._surface = fast_surfaces(gui._surface)
 
     for cls in (gui.NeonButton, gui.RoundedEntry, gui.NeonScrollbar,
@@ -346,6 +370,8 @@ class ScaleController:
     def __init__(self, app):
         self.app, self.value = app, 1.0
         self.snapshots = {}
+        self.pending_draws = {}
+        self.draw_all = False
         self.scan_timer = self.resize_timer = self.redraw_timer = self.zoom_timer = None
         self.zoom_goal = 1.0
         self.reference = (1120, 780, 1.0)
@@ -354,11 +380,51 @@ class ScaleController:
         app._ui_scale = self
         app.minsize(MIN_WIDTH, MIN_HEIGHT)
         self.build_panel()
+        app.tasks_canvas.configure(yscrollcommand=self.task_scroll_changed)
+        app.cards.bind("<Configure>", self.visible_cards_changed, add="+")
+        app.tasks_canvas.bind("<Configure>", self.visible_cards_changed, add="+")
         app.bind("<Configure>", self.window_changed, add="+")
         app.bind_all("<Map>", self.new_widget, add="+")
         app.bind("<Destroy>", self.cleanup, add="+")
         self.scan()
         self.schedule_fit()
+
+    def card_in_view(self, widget):
+        # Карточки сохраняют свои места в списке, но рисуются только при
+        # попадании в видимую часть. Это также относится к их кнопкам.
+        cards = self.app.cards
+        card = widget
+        if widget.master is not cards:
+            card = widget.master
+            if getattr(card, "master", None) is not cards:
+                return True
+        if not getattr(card, "_scaled_canvas", False):
+            return True
+        viewport = self.app.tasks_canvas
+        top = viewport.canvasy(0)
+        y = card.winfo_y()
+        return y + _native_height(card) > top and y < top + _native_height(viewport)
+
+    def task_scroll_changed(self, first, last):
+        self.app.scrollbar.set(first, last)
+        self.visible_cards_changed()
+
+    def visible_cards_changed(self, event=None):
+        # Один запрос на перерисовку списка после серии событий прокрутки.
+        self.queue_draw(self.app.cards)
+
+    def queue_draw(self, widget=None):
+        if widget is None:
+            self.draw_all = True
+        else:
+            self.pending_draws[widget] = None
+        self.schedule_draw()
+
+    def schedule_draw(self):
+        if self.redraw_timer is None:
+            # Дать Tk разместить вложенные элементы перед отрисовкой
+            # текущего кадра. Таймер не сбрасывается движением мыши.
+            self.redraw_timer = self.app.after(16, self.redraw)
 
     def build_panel(self):
         from gui import NeonButton, PANEL, WHITE, MUTED
@@ -374,12 +440,12 @@ class ScaleController:
         controls = tk.Frame(self.panel, bg=PANEL)
         controls.grid(row=1, column=0, sticky="ew")
         controls.grid_columnconfigure(1, weight=1)
-        NeonButton(controls, "−", lambda: self.nudge(-.1), width=30,
+        NeonButton(controls, "−", lambda: self.nudge(-.05), width=30,
                    height=32, font_size=18).grid(row=0, column=0)
         self.percent_button = NeonButton(controls, "100% ▾", self.show_choices,
                                         width=68, height=32, font_size=13)
         self.percent_button.grid(row=0, column=1, sticky="ew")
-        NeonButton(controls, "+", lambda: self.nudge(.1), width=30,
+        NeonButton(controls, "+", lambda: self.nudge(.05), width=30,
                    height=32, font_size=18).grid(row=0, column=2)
         NeonButton(self.panel, "Вернуть 100%", lambda: self.choose(1),
                    width=110, height=29, font_size=12, bold=False).grid(
@@ -500,9 +566,21 @@ class ScaleController:
 
     def redraw(self):
         self.redraw_timer = None
-        for widget in list(self.snapshots):
+        # Следующее изменение окна может уже ждать своего fit. Текущий
+        # кадр всё равно рисуем, чтобы непрерывное движение не гасило экран.
+        pending = self.pending_draws
+        self.pending_draws = {}
+        if self.draw_all:
+            pending = dict.fromkeys(self.snapshots) | pending
+        elif self.app.cards in pending:
+            for card in self.app.cards.winfo_children():
+                if self.card_in_view(card):
+                    for widget in (card, *card.winfo_children()):
+                        pending[widget] = None
+        self.draw_all = False
+        for widget in pending:
             if not widget.winfo_exists():
-                del self.snapshots[widget]
+                self.snapshots.pop(widget, None)
                 continue
             if getattr(widget, "_scaled_canvas", False):
                 method = getattr(widget, "draw", None) or getattr(widget, "_draw", None)
@@ -518,9 +596,7 @@ class ScaleController:
                 fresh.append(widget)
         for widget in fresh:
             if getattr(widget, "_scaled_canvas", False):
-                method = getattr(widget, "draw", None) or getattr(widget, "_draw", None)
-                if method is not None:
-                    method()
+                self.queue_draw(widget)
         for widget in list(self.snapshots):
             if not widget.winfo_exists():
                 del self.snapshots[widget]
@@ -538,20 +614,26 @@ class ScaleController:
         value = bounded(value)
         if value == self.value:
             return
-        self.scan()
+        if self.scan_timer is not None:
+            self.app.after_cancel(self.scan_timer)
+            self.scan()
         self.value = value
         for widget in list(self.snapshots):
             if widget.winfo_exists():
                 self.apply(widget)
         self.update_panel()
-        if self.redraw_timer is not None:
-            self.app.after_cancel(self.redraw_timer)
-        self.redraw_timer = self.app.after_idle(self.redraw)
+        self.queue_draw()
 
     def choose(self, value):
         # Выбор процента не отключает реакцию на растягивание окна.
         self.auto.set(True)
         self.stop_animation()
+        if self.resize_timer is not None:
+            self.app.after_cancel(self.resize_timer)
+            self.resize_timer = None
+        if self.redraw_timer is not None:
+            self.app.after_cancel(self.redraw_timer)
+            self.redraw_timer = None
         value = bounded(value)
         width, height = zoom_geometry(value)
         if self.app.state() == "normal":
@@ -562,6 +644,8 @@ class ScaleController:
             self.reference = (self.app.winfo_width(), self.app.winfo_height(), value)
         # Один согласованный переход вместо серии тяжёлых промежуточных кадров.
         self.set_scale(value)
+        if self.draw_all or self.pending_draws:
+            self.schedule_draw()
 
     def nudge(self, amount):
         self.choose(self.value+amount)
@@ -580,12 +664,17 @@ class ScaleController:
 
     def schedule_fit(self):
         if self.resize_timer is None:
-            self.resize_timer = self.app.after(24, self.fit)
+            self.resize_timer = self.app.after(16, self.fit)
 
     def fit(self):
         self.resize_timer = None
         self.stop_animation()
-        self.set_scale(relative_scale(self.app.winfo_width(), self.app.winfo_height(), self.reference))
+        scale = relative_scale(self.app.winfo_width(), self.app.winfo_height(), self.reference)
+        # Ширина элементов меняется с окном в пикселях. Шрифты и отступы
+        # достаточно пересчитывать, когда меняется показанный процент.
+        self.set_scale(round(scale*100)/100)
+        if self.draw_all or self.pending_draws:
+            self.schedule_draw()
 
     def cleanup(self, event):
         if event.widget == self.app:
@@ -593,6 +682,7 @@ class ScaleController:
                 if timer is not None:
                     self.app.after_cancel(timer)
             self.snapshots.clear()
+            self.pending_draws.clear()
 
 
 # КОНЕЦ ФАЙЛА ui_scale.py

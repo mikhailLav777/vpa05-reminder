@@ -370,6 +370,8 @@ class StandardApp(LiveApp):
             if not filter_demo_tasks(((task.card, task.description),), self.active_status, self.search_text.get()):
                 continue
             title, due, status = task.card[:3]
+            if row["repeat_daily"]:
+                title = f"Ежедневно · {title}"
             iid = str(task.reminder_id)
             priority = PRIORITY_LABELS[priority_index(row["important"], row["urgent"])]
             self.table.insert("", "end", iid=iid, values=(title, due, status, priority), tags=(status,))
