@@ -1,13 +1,24 @@
-"""Запуск главного окна с постоянным хранением задач."""
+"""Запуск напоминалки с постоянным хранением задач."""
 
-from live_app import LiveApp
-from ui_scale import ScaleController, install_scaling
+import argparse
 
 
 def main():
-    install_scaling()
-    app = LiveApp()
-    app.scale_controller = ScaleController(app)
+    parser = argparse.ArgumentParser(description="Мои напоминания")
+    parser.add_argument("--classic", action="store_true", help="Открыть прежнее главное окно")
+    args = parser.parse_args()
+
+    if args.classic:
+        from live_app import LiveApp
+        from ui_scale import ScaleController, install_scaling
+
+        install_scaling()
+        app = LiveApp()
+        app.scale_controller = ScaleController(app)
+    else:
+        from standard_app import StandardApp
+
+        app = StandardApp()
     app.mainloop()
 
 
